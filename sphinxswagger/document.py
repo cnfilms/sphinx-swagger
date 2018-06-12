@@ -8,6 +8,7 @@ class SwaggerDocument(object):
 
     def __init__(self):
         super(SwaggerDocument, self).__init__()
+        self._definitions = {}
         self._paths = {}
 
     def get_document(self, config):
@@ -37,9 +38,10 @@ class SwaggerDocument(object):
                 "security": [
                     {"JWT": []}
                 ],
+                'definitions': self._definitions, 
                 'paths': self._paths}
 
-    def add_endpoint(self, endpoint, debug_info=None):
+    def add_endpoint(self, endpoint, debug_info=False):
         """
         Add a swagger endpoint document.
 
@@ -48,13 +50,29 @@ class SwaggerDocument(object):
             in the swagger definition
 
         """
-        path_info = self._paths.setdefault(endpoint.uri_template, {})
-        if endpoint.method in path_info:
-            pass  # already gots this ... good this isn't
-        path_info[endpoint.method] = endpoint.generate_swagger()
-        if debug_info:
-            path_info[endpoint.method]['x-debug-info'] = debug_info
+        if type(endpoint) == SwaggerEndpoint:
+            path_info = self._paths.setdefault(endpoint.uri_template, {})
+            if endpoint.method in path_info:
+                pass  # already gots this ... good this isn't
+            path_info[endpoint.method] = endpoint.generate_swagger()
+        elif type(endpoint) == SwaggerDefinition:
+            self._definitions[endpoint.object_name] = endpoint.generate_swagger()
 
+        # if debug_info:
+        #     path_info[endpoint.method]['x-debug-info'] = debug_info
+
+class SwaggerDefinition(object):
+    def __init__(self):
+        self.object_name = None
+        self.object_type = 'object'
+        self.object_properties = {}
+        self.properties_required = []
+
+    def generate_swagger(self):
+        swagger = {}
+        swagger = {'type': self.object_type, 'properties': self.object_properties}
+
+        return swagger
 
 class SwaggerEndpoint(object):
 
