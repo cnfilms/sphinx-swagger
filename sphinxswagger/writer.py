@@ -2,6 +2,7 @@ from docutils import nodes, writers
 import json
 import os.path
 import re
+from webargs import fields
 
 from sphinxswagger import document
 
@@ -93,19 +94,29 @@ class SwaggerTranslator(nodes.SparseNodeVisitor):
         self._endpoint = document.SwaggerEndpoint()
         self._endpoint.method = node['desctype']
         self.info('processing {}', node['desctype'])
+    
+    def _add_new_definition(self, node):
+        self._current_node = node
+        self._endpoint = document.SwaggerDefinition()
+        # self._endpoint.object_name = node['desc_name']
+        self.info('processing {}', node['desctype'])
 
     def _complete_current_path(self, node):
         """
         :param sphinx.addnodes.desc node:
         """
         assert self._current_node is node
-        self._swagger_doc.add_endpoint(self._endpoint)
+        self._swagger_doc.add_endpoint(self._endpoint,
+                                       _generate_debug_tree(node))
         self._endpoint = None
         self._current_node = None
 
     def visit_desc(self, node):
         if node['domain'] == 'http':
             self._start_new_path(node)
+        
+        if node['domain'] == 'py':
+            self._add_new_definition(node)
 
         if not self._endpoint:
             raise nodes.SkipNode
@@ -128,7 +139,12 @@ class SwaggerTranslator(nodes.SparseNodeVisitor):
         self.debug('visiting {}: {!r}', node.__class__, node.attributes)
         if node.parent is self._current_node:
             # signature of the endpoint itself
-            self._endpoint.uri_template = _convert_url(node['path'])
+            if type(self._endpoint) == document.SwaggerEndpoint: 
+                if 'path' in node:
+                    self._endpoint.uri_template = _convert_url(node['path'])
+            elif type(self._endpoint) == document.SwaggerDefinition:
+                if 'fullname' in node:
+                    self._endpoint.object_name = node['fullname']
 
     def visit_desc_content(self, node):
         """
@@ -140,10 +156,168 @@ class SwaggerTranslator(nodes.SparseNodeVisitor):
         self.debug('visiting {}: {!r}', node.__class__, node.attributes)
         if node.parent is self._current_node:
             # description of the endpoint itself
-            walker = EndpointVisitor(self.document, self._endpoint)
-            node.walkabout(walker)
-            self._endpoint.description = '\n\n'.join(walker.description)
+            if type(self._endpoint) == document.SwaggerEndpoint:
+                walker = EndpointVisitor(self.document, self._endpoint)
+                node.walkabout(walker)
+                self._endpoint.description = '\n\n'.join(walker.description)
 
+    def visit_desc_annotation(self, node):
+        self.debug('visiting {}: {!r}', node.__class__, node.attributes)
+        if type(self._endpoint) == document.SwaggerDefinition:
+            walker = DefinitionVisitor(self.document, self._endpoint)
+            json_node = walker.compute_swagger_definition(node)
+            node.walkabout(walker)
+            self._endpoint.object_properties = json_node
+
+
+class DefinitionVisitor(nodes.SparseNodeVisitor):
+    """
+    the purpose is to parse pyramid schema webargs(http://webargs.readthedocs.io/en/latest/,
+    used with decorator use_args or use_kwargs on each API endpoint) as swagger definitions.
+    This method need dict to define the args for example : 
+
+        :Example:
+
+        example_args = {
+            "id_example": fields.Integer(),
+            "type_example": fields.Str(),
+            "bool_example": fields.Boolean(),
+            "nested_example": fields.Nested(another_example, attribute='another_example'),
+            "list_example": fields.List(fields.Integer(), attribute='integer')
+        }
+
+
+    Note: To handle with args depth and custom fields, you need to use the attribute parameter
+
+    As a query parameter, the definition of an object need to refer to the name used as key in brackets
+
+        :Example:
+
+        :query object(example_args) arg: arg
+    """
+    FIND_BEGIN_FIELD = '<fields'
+    FIND_END_FIELD = '})>'
+    DEFINITION_PREFIX = '#/definitions/'
+    type_map = {
+        'Boolean': 'boolean',
+        'boolean': 'boolean',
+        'bool': 'boolean',
+        'Str': 'string',
+        'String': 'string',
+        'string': 'string',
+        'Integer': 'number',
+        'integer': 'number',
+        'int': 'number',
+        'List': 'array',
+        'list': 'array',
+        'array': 'array',
+        'Nested': '$ref',
+        'Date': 'string',
+    }
+
+    def __init__(self, document, endpoint):
+        """
+        """
+        nodes.SparseNodeVisitor.__init__(self, document)
+        self.document = document
+        self.endpoint = endpoint
+
+    def _get_type(self, val):
+        if val in self.type_map:
+            return self.type_map[val]    
+        elif 'Date' in val:
+            return self.type_map['Date']
+        return val
+
+    def extract_field(self, result, val, index_start):
+        end_index = val.index('(')
+        new_index = val.find(self.FIND_BEGIN_FIELD, index_start, val.index('('))
+        if new_index == -1:
+            return result
+        item = {'start': new_index, 'end': end_index}
+        new_index += len(self.FIND_BEGIN_FIELD)+1
+        type_val = val[new_index:end_index]
+        item.update({'type': type_val, 'enum_type': self._get_type(type_val)})
+        result.append(item)
+        return self.extract_field(result, val, new_index)
+    
+    def extract_sub_type(self, val):
+        definition = val[val.index('('):val.index(')>')]
+
+        attribute_tab = definition.split(',')
+        for r in attribute_tab:
+            key_val = r.split('=')
+            key = key_val[0].strip()
+            if key == 'attribute':
+                val = key_val[1].strip().replace("'", "").replace('"', "")
+                if val != 'None':
+                    return self._get_type(val)
+        return ''
+
+    def compute_field_repr(self, body_str):
+        index_registry = []
+        index = 0
+        while index <= len(body_str):
+            begin_field = body_str.find(self.FIND_BEGIN_FIELD, index)
+            end_field = body_str.find(self.FIND_END_FIELD, index)
+            if begin_field < end_field and begin_field != -1:
+                index_registry.append(begin_field)
+                index = begin_field + len(self.FIND_BEGIN_FIELD)
+            elif (end_field < begin_field or begin_field == -1) and end_field != -1:
+                index_registry.append(end_field+len(self.FIND_END_FIELD))
+                index = end_field + len(self.FIND_END_FIELD)
+            else:
+                break
+        return index_registry
+
+    def parse_object_string_repr(self, body_str):
+        index_registry = self.compute_field_repr(body_str)
+        
+        s = ''
+        for i, ind in enumerate(index_registry):
+            if not s:
+                s = body_str[:ind+i] + '"' + body_str[ind+i:]
+            else:
+                s = s[:ind+i] + '"' + s[ind+i:]
+        
+        result_dict = eval(s)
+        return result_dict 
+
+    def compute_field_to_type(self, swagger_definitions, key, val, field):
+        if field['enum_type'] == '$ref':
+            end = field['end']
+            sub_type = self.extract_sub_type(val[end:])
+            swagger_definitions[key].update({'$ref': self.DEFINITION_PREFIX+sub_type})
+        elif field['enum_type'] == 'array':
+            end = field['end']
+            sub_type = self.extract_sub_type(val[end:])
+            if sub_type and sub_type in self.type_map.values():
+                swagger_definitions[key].update({'items': {'type': sub_type}})
+            elif sub_type:
+                swagger_definitions[key].update({'items' : {'$ref': self.DEFINITION_PREFIX+sub_type}})
+        else:
+            swagger_definitions[key].update({'type': field['enum_type']})
+
+    
+    def compute_definition(self, result_dict):
+        swagger_definitions = {}
+        index_start = 0
+
+        for key, val in result_dict.items():
+            swagger_definitions.update({key: {}})
+            result = []
+            fields = self.extract_field(result, val, index_start)
+            for field in fields:
+                self.compute_field_to_type(swagger_definitions, key, val, field)
+        return swagger_definitions
+
+    def compute_swagger_definition(self, node):
+        body_str = node.astext()[node.astext().find('=')+1:].strip()
+        result_dict = self.parse_object_string_repr(body_str)
+
+        swagger_definitions = self.compute_definition(result_dict)
+        
+        return swagger_definitions
 
 class EndpointVisitor(nodes.SparseNodeVisitor):
     """Visits the content for a single endpoint."""
@@ -172,7 +346,7 @@ class EndpointVisitor(nodes.SparseNodeVisitor):
     def visit_field(self, node):
         """
         :param docutils.nodes.field node:
-        """
+        """ 
         idx = node.first_child_matching_class(nodes.field_name)
         if idx is not None:
             name_node = node[idx]
@@ -280,37 +454,46 @@ class ParameterVisitor(nodes.SparseNodeVisitor):
             s, e = tokens.index('(', 0, idx), tokens.index(')', 0, idx)
             name = ' '.join(tokens[:s])
             key = tokens[s+1]
-
+            
             key_map = None
-
-            sub_type = 'string'
+            
+            param_sub_type = 'string'
             if all([sep in key for sep in ['(', ')']]) and key.index('(') < key.index(')'):
                 key_map = key[:key.index('(')]
-                if key_map in ['array', 'list']:
+                if key_map in ['array', 'list', 'object']:
                     sub_key = key[key.index('(')+1:key.index(')')]
-                    sub_type = type_map.get(sub_key) or 'string'
+                    param_sub_type = type_map.get(sub_key) or sub_key
             else:
                 key_map = key
-            type = type_map.get(key_map) or 'string'
+            param_type = type_map.get(key_map) or 'string'
         except ValueError:
             name = ' '.join(tokens[:idx])
-            type = 'string'
+            param_type = 'string'
 
         description = ' '.join(tokens[idx + 1:]).strip()
         description = description[0].upper() + description[1:]
 
         param_info = self._fixed_attributes.copy()
-        if type == 'array':
+
+        if param_type == 'array' and param_sub_type in type_map.values():
             param_info.update({'name': name,
-                            'type': type,
+                            'type': param_type,
                             'description': description,
-                            'items': {'type': sub_type}})
-        elif type == 'object':
+                            'items': {'type': param_sub_type}})
+        elif param_type == 'object' and param_sub_type in type_map.values():
             param_info.update({'name': name,
                             'additionalProperties': {'type': 'string'}})
+        elif param_type == 'array' and param_sub_type not in type_map.values():
+            param_info.update({'name': name,
+                            'type': param_type,
+                            'description': description,
+                            'items': {'$ref': '#/definitions/'+param_sub_type}})
+        elif param_type == 'object' and param_sub_type not in type_map.values():
+            param_info.update({'name': name,
+                            '$ref': '#/definitions/'+param_sub_type})
         else:
             param_info.update({'name': name,
-                            'type': type,
+                            'type': param_type,
                             'description': description})
         self.parameters.append(param_info)
 
