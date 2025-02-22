@@ -1,2 +1,12 @@
-Sphinx>=1.4,<2
-sphinxcontrib-httpdomain>=1.5.0
+alabaster==0.7.12
+MarkupSafe==2.0.1
+Sphinx==1.8.5
+sphinx-swagger==0.0.4
+sphinxcontrib-applehelp==2.0.0
+sphinxcontrib-devhelp==2.0.0
+sphinxcontrib-htmlhelp==2.1.0
+sphinxcontrib-httpdomain==1.8.1
+sphinxcontrib-jsmath==1.0.1
+sphinxcontrib-qthelp==2.0.0
+sphinxcontrib-serializinghtml==2.0.0
+sphinxcontrib-websupport==1.2.4
