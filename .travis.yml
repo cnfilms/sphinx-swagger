@@ -3,6 +3,8 @@ python:
 - '2.7'
 - '3.4'
 - '3.5'
+- '3.9'
+- '3.11'
 sudo: false
 install:
 - pip install -q -r requires/development.txt
@@ -18,4 +20,4 @@ deploy:
     tags: true
     all_branches: true
     repo: dave-shawley/sphinx-swagger
-    python: 3.5
+    python: 3.9
