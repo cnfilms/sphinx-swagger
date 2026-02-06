@@ -24,22 +24,31 @@ class SwaggerDocument(object):
         if not info['description'] and hasattr(config, 'html_theme_options'):
             info['description'] = config.html_theme_options.get('description')
 
-        return {'swagger': '2.0',
-                'info': info,
-                'host': 'localhost:8010',
-                'basePath': '/',
-                "securityDefinitions": {
-                    "JWT": {
-                    "type": "apiKey",
-                    "name": "Authorization",
-                    "in": "header"
-                    }
-                },
-                "security": [
-                    {"JWT": []}
-                ],
-                'definitions': self._definitions, 
-                'paths': self._paths}
+        auth_header_label = 'Authorization'
+        if auth_header_label in config._raw_config:
+            auth_header_label = config._raw_config[auth_header_label]
+        host = 'localhost:8080'
+        if host in config._raw_config:
+            host = config._raw_config[host]
+
+        return {
+            'swagger': '2.0',
+            'info': info,
+            'host': host,
+            'basePath': '/',
+            "securityDefinitions": {
+                "JWT": {
+                "type": "apiKey",
+                "name": auth_header_label,
+                "in": "header"
+                }
+            },
+            "security": [
+                {"JWT": []}
+            ],
+            'definitions': self._definitions,
+            'paths': self._paths
+        }
 
     def add_endpoint(self, endpoint, debug_info=False):
         """
