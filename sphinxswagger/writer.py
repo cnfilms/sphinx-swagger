@@ -6,7 +6,6 @@ from webargs import fields
 
 from sphinxswagger import document
 
-
 URI_TEMPLATE_RE = re.compile(r'\(\?P<([^>]*)>.*\)')
 
 
@@ -94,7 +93,7 @@ class SwaggerTranslator(nodes.SparseNodeVisitor):
         self._endpoint = document.SwaggerEndpoint()
         self._endpoint.method = node['desctype']
         self.info('processing {}', node['desctype'])
-    
+
     def _add_new_definition(self, node):
         self._current_node = node
         self._endpoint = document.SwaggerDefinition()
@@ -114,7 +113,7 @@ class SwaggerTranslator(nodes.SparseNodeVisitor):
     def visit_desc(self, node):
         if node['domain'] == 'http':
             self._start_new_path(node)
-        
+
         if node['domain'] == 'py':
             self._add_new_definition(node)
 
@@ -139,7 +138,7 @@ class SwaggerTranslator(nodes.SparseNodeVisitor):
         self.debug('visiting {}: {!r}', node.__class__, node.attributes)
         if node.parent is self._current_node:
             # signature of the endpoint itself
-            if type(self._endpoint) == document.SwaggerEndpoint: 
+            if type(self._endpoint) == document.SwaggerEndpoint:
                 if 'path' in node:
                     self._endpoint.uri_template = _convert_url(node['path'])
             elif type(self._endpoint) == document.SwaggerDefinition:
@@ -174,7 +173,7 @@ class DefinitionVisitor(nodes.SparseNodeVisitor):
     """
     the purpose is to parse pyramid schema webargs(http://webargs.readthedocs.io/en/latest/,
     used with decorator use_args or use_kwargs on each API endpoint) as swagger definitions.
-    This method need dict to define the args for example : 
+    This method need dict to define the args for example :
 
         :Example:
 
@@ -197,7 +196,7 @@ class DefinitionVisitor(nodes.SparseNodeVisitor):
     """
     FIND_BEGIN_FIELD = '<fields'
     FIND_END_FIELD = '})>'
-    DEFINITION_PREFIX = '#/definitions/'
+    DEFINITION_PREFIX = '#/components/schemas/'
     type_map = {
         'Boolean': 'boolean',
         'boolean': 'boolean',
@@ -226,7 +225,7 @@ class DefinitionVisitor(nodes.SparseNodeVisitor):
 
     def _get_type(self, val):
         if val in self.type_map:
-            return self.type_map[val]    
+            return self.type_map[val]
         elif 'Date' in val:
             return self.type_map['Date']
         return val
@@ -237,12 +236,12 @@ class DefinitionVisitor(nodes.SparseNodeVisitor):
         if new_index == -1:
             return result
         item = {'start': new_index, 'end': end_index}
-        new_index += len(self.FIND_BEGIN_FIELD)+1
+        new_index += len(self.FIND_BEGIN_FIELD) + 1
         type_val = val[new_index:end_index]
         item.update({'type': type_val, 'enum_type': self._get_type(type_val)})
         result.append(item)
         return self.extract_field(result, val, new_index)
-    
+
     def extract_sub_type(self, val):
         definition = val[val.index('('):val.index(')>')]
 
@@ -266,7 +265,7 @@ class DefinitionVisitor(nodes.SparseNodeVisitor):
                 index_registry.append(begin_field)
                 index = begin_field + len(self.FIND_BEGIN_FIELD)
             elif (end_field < begin_field or begin_field == -1) and end_field != -1:
-                index_registry.append(end_field+len(self.FIND_END_FIELD))
+                index_registry.append(end_field + len(self.FIND_END_FIELD))
                 index = end_field + len(self.FIND_END_FIELD)
             else:
                 break
@@ -274,33 +273,32 @@ class DefinitionVisitor(nodes.SparseNodeVisitor):
 
     def parse_object_string_repr(self, body_str):
         index_registry = self.compute_field_repr(body_str)
-        
+
         s = ''
         for i, ind in enumerate(index_registry):
             if not s:
-                s = body_str[:ind+i] + '"' + body_str[ind+i:]
+                s = body_str[:ind + i] + '"' + body_str[ind + i:]
             else:
-                s = s[:ind+i] + '"' + s[ind+i:]
-        
+                s = s[:ind + i] + '"' + s[ind + i:]
+
         result_dict = eval(s)
-        return result_dict 
+        return result_dict
 
     def compute_field_to_type(self, swagger_definitions, key, val, field):
         if field['enum_type'] == '$ref':
             end = field['end']
             sub_type = self.extract_sub_type(val[end:])
-            swagger_definitions[key].update({'$ref': self.DEFINITION_PREFIX+sub_type})
+            swagger_definitions[key].update({'$ref': self.DEFINITION_PREFIX + sub_type})
         elif field['enum_type'] == 'array':
             end = field['end']
             sub_type = self.extract_sub_type(val[end:])
             if sub_type and sub_type in self.type_map.values():
                 swagger_definitions[key].update({'items': {'type': sub_type}})
             elif sub_type:
-                swagger_definitions[key].update({'items' : {'$ref': self.DEFINITION_PREFIX+sub_type}})
+                swagger_definitions[key].update({'items': {'$ref': self.DEFINITION_PREFIX + sub_type}})
         else:
             swagger_definitions[key].update({'type': field['enum_type']})
 
-    
     def compute_definition(self, result_dict):
         swagger_definitions = {}
         index_start = 0
@@ -314,12 +312,13 @@ class DefinitionVisitor(nodes.SparseNodeVisitor):
         return swagger_definitions
 
     def compute_swagger_definition(self, node):
-        body_str = node.astext()[node.astext().find('=')+1:].strip()
+        body_str = node.astext()[node.astext().find('=') + 1:].strip()
         result_dict = self.parse_object_string_repr(body_str)
 
         swagger_definitions = self.compute_definition(result_dict)
-        
+
         return swagger_definitions
+
 
 class EndpointVisitor(nodes.SparseNodeVisitor):
     """Visits the content for a single endpoint."""
@@ -348,7 +347,7 @@ class EndpointVisitor(nodes.SparseNodeVisitor):
     def visit_field(self, node):
         """
         :param docutils.nodes.field node:
-        """ 
+        """
         idx = node.first_child_matching_class(nodes.field_name)
         if idx is not None:
             name_node = node[idx]
@@ -379,17 +378,25 @@ class EndpointVisitor(nodes.SparseNodeVisitor):
             elif name == 'Request JSON Object':
                 visitor = ParameterVisitor(self.document)
                 value_node.walkabout(visitor)
-                self.endpoint.parameters.append({
-                    'name': 'request-body', 'in': 'body', 'required': True,
-                    'description': 'A serialized request body',
-                    'schema': visitor.get_schema()})
+                self.endpoint.request_body = {
+                    'required': True,
+                    'content': {
+                        'application/json': {
+                            'schema': visitor.get_schema()
+                        }
+                    }
+                }
             elif name == 'Request JSON Array of Objects':
                 visitor = ParameterVisitor(self.document)
                 value_node.walkabout(visitor)
-                self.endpoint.parameters.append({
-                    'name': 'request-body', 'in': 'body', 'required': True,
-                    'schema': {'type': 'array', 'items': visitor.get_schema()}
-                })
+                self.endpoint.request_body = {
+                    'required': True,
+                    'content': {
+                        'application/json': {
+                            'schema': {'type': 'array', 'items': visitor.get_schema()}
+                        }
+                    }
+                }
             elif name == 'Response JSON Object':
                 visitor = ParameterVisitor(self.document)
                 value_node.walkabout(visitor)
@@ -427,8 +434,10 @@ class ParameterVisitor(nodes.SparseNodeVisitor):
         schema = {'type': 'object', 'properties': {}, 'required': []}
         for param in self.parameters:
             name = param['name']
-            schema['properties'][name] = param.copy()
-            del schema['properties'][name]['name']
+            prop = param.get('schema', {}).copy()
+            if 'description' in param:
+                prop['description'] = param['description']
+            schema['properties'][name] = prop
             schema['required'].append(name)
         return schema
 
@@ -455,15 +464,15 @@ class ParameterVisitor(nodes.SparseNodeVisitor):
         try:
             s, e = tokens.index('(', 0, idx), tokens.index(')', 0, idx)
             name = ' '.join(tokens[:s])
-            key = tokens[s+1]
-            
+            key = tokens[s + 1]
+
             key_map = None
-            
+
             param_sub_type = 'string'
             if all([sep in key for sep in ['(', ')']]) and key.index('(') < key.index(')'):
                 key_map = key[:key.index('(')]
                 if key_map in ['array', 'list', 'object']:
-                    sub_key = key[key.index('(')+1:key.index(')')]
+                    sub_key = key[key.index('(') + 1:key.index(')')]
                     param_sub_type = type_map.get(sub_key) or sub_key
             else:
                 key_map = key
@@ -479,24 +488,27 @@ class ParameterVisitor(nodes.SparseNodeVisitor):
 
         if param_type == 'array' and param_sub_type in type_map.values():
             param_info.update({'name': name,
-                            'type': param_type,
-                            'description': description,
-                            'items': {'type': param_sub_type}})
+                               'description': description,
+                               'schema': {'type': param_type,
+                                          'items': {'type': param_sub_type}}})
         elif param_type == 'object' and param_sub_type in type_map.values():
             param_info.update({'name': name,
-                            'additionalProperties': {'type': 'string'}})
+                               'description': description,
+                               'schema': {'type': 'object',
+                                          'additionalProperties': {'type': 'string'}}})
         elif param_type == 'array' and param_sub_type not in type_map.values():
             param_info.update({'name': name,
-                            'type': param_type,
-                            'description': description,
-                            'items': {'$ref': '#/definitions/'+param_sub_type}})
+                               'description': description,
+                               'schema': {'type': param_type,
+                                          'items': {'$ref': '#/components/schemas/' + param_sub_type}}})
         elif param_type == 'object' and param_sub_type not in type_map.values():
             param_info.update({'name': name,
-                            '$ref': '#/definitions/'+param_sub_type})
+                               'description': description,
+                               'schema': {'$ref': '#/components/schemas/' + param_sub_type}})
         else:
             param_info.update({'name': name,
-                            'type': param_type,
-                            'description': description})
+                               'description': description,
+                               'schema': {'type': param_type}})
         self.parameters.append(param_info)
 
 
@@ -524,7 +536,7 @@ class StatusVisitor(nodes.SparseNodeVisitor):
             code = tokens[0]
         idx = _find_param_separator(tokens)
         reason = ' '.join(tokens[1:idx])
-        description = ' '.join(tokens[idx+1:])
+        description = ' '.join(tokens[idx + 1:])
         self.status_info[code] = {'reason': reason, 'description': description}
 
         raise nodes.SkipChildren
@@ -660,12 +672,18 @@ def _render_response_information(body):
 
     response_obj = {
         'description': '',
-        'schema': {
-            'type': 'object',
-            'required': [],
-            'properties': {},
+        'content': {
+            'application/json': {
+                'schema': {
+                    'type': 'object',
+                    'required': [],
+                    'properties': {},
+                }
+            }
         },
     }
+
+    schema = response_obj['content']['application/json']['schema']
 
     for list_item in bullet_list.children:
         assert isinstance(list_item, nodes.list_item)
@@ -676,8 +694,8 @@ def _render_response_information(body):
 
         obj_info = _parsed_typed_object(para)
         if obj_info:
-            response_obj['schema']['required'].append(obj_info['name'])
-            response_obj['schema']['properties'][obj_info['name']] = {
+            schema['required'].append(obj_info['name'])
+            schema['properties'][obj_info['name']] = {
                 'type': obj_info['type'],
                 'description': obj_info['description'],
             }

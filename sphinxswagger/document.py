@@ -32,22 +32,23 @@ class SwaggerDocument(object):
             host = config._raw_config[host]
 
         return {
-            'swagger': '2.0',
+            'openapi': '3.0.4',
             'info': info,
-            'host': host,
-            'basePath': '/',
-            "securityDefinitions": {
-                "JWT": {
-                "type": "apiKey",
-                "name": auth_header_label,
-                "in": "header"
-                }
+            'servers': [{'url': 'https://' + host + '/'}],
+            'components': {
+                'securitySchemes': {
+                    'JWT': {
+                        'type': 'apiKey',
+                        'name': auth_header_label,
+                        'in': 'header',
+                    }
+                },
+                'schemas': self._definitions,
             },
-            "security": [
-                {"JWT": []}
+            'security': [
+                {'JWT': []}
             ],
-            'definitions': self._definitions,
-            'paths': self._paths
+            'paths': self._paths,
         }
 
     def add_endpoint(self, endpoint, debug_info=False):
@@ -92,6 +93,7 @@ class SwaggerEndpoint(object):
         self.tags = list()
         self.description = ''
         self.parameters = []
+        self.request_body = None
         self.responses = {}
         self.default_response_schema = None
         self.response_headers = None
@@ -112,7 +114,7 @@ class SwaggerEndpoint(object):
                 'name': name,
                 'description': description,
                 'in': 'header',
-                'type': 'string',
+                'schema': {'type': 'string'},
             })
 
     def add_response_headers(self, headers):
@@ -141,15 +143,14 @@ class SwaggerEndpoint(object):
         swagger = {'summary': self.summary, 'description': self.description, 'tags': self.tags}
         if self.parameters:
             swagger['parameters'] = self.parameters
+        if self.request_body:
+            swagger['requestBody'] = self.request_body
 
         if self.responses:
             swagger['responses'] = self.responses
-        else:  # swagger requires at least one response
+        else:  # openapi requires at least one response
             swagger['responses'] = {'default': {'description': ''}}
 
-        # Figure out where to put the response schema and response
-        # header details.  This is probably going to change in the
-        # future since it is `hinky' at best.
         default_code = 'default'
         status_codes = sorted(int(code)
                               for code in swagger['responses']
@@ -161,10 +162,15 @@ class SwaggerEndpoint(object):
 
         if default_code in swagger['responses']:
             if self.default_response_schema:
-                swagger['responses'][default_code]['schema'] = \
-                    self.default_response_schema
+                swagger['responses'][default_code]['content'] = {
+                    'application/json': {
+                        'schema': self.default_response_schema
+                    }
+                }
             if self.response_headers:
-                swagger['responses'][default_code]['headers'] = \
-                    self.response_headers
+                oa_headers = {}
+                for hname, hinfo in self.response_headers.items():
+                    oa_headers[hname] = {'schema': hinfo}
+                swagger['responses'][default_code]['headers'] = oa_headers
 
         return swagger
