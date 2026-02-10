@@ -213,6 +213,8 @@ class DefinitionVisitor(nodes.SparseNodeVisitor):
         'array': 'array',
         'Nested': '$ref',
         'Date': 'string',
+        'Decimal': 'number',
+        'Float': 'number',
     }
 
     def __init__(self, document, endpoint):
