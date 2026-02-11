@@ -4,6 +4,8 @@ except ImportError:
     import httplib as http_client
 
 
+
+
 class SwaggerDocument(object):
 
     def __init__(self):
@@ -24,17 +26,14 @@ class SwaggerDocument(object):
         if not info['description'] and hasattr(config, 'html_theme_options'):
             info['description'] = config.html_theme_options.get('description')
 
-        auth_header_label = 'Authorization'
-        if auth_header_label in config._raw_config:
-            auth_header_label = config._raw_config[auth_header_label]
-        host = 'localhost:8080'
-        if host in config._raw_config:
-            host = config._raw_config[host]
+        auth_header_label = config._raw_config.get('auth_header_label', 'Authorization')
+        is_local = config._raw_config.get('is_local', False)
+        host = config._raw_config.get('host', 'localhost:8080')
 
         return {
-            'openapi': '3.0.4',
+            'openapi': '3.0.3',
             'info': info,
-            'servers': [{'url': 'https://' + host + '/'}],
+            'servers': [{'url': f"{'https' if not is_local else 'http'}://" + host + "/"}],
             'components': {
                 'securitySchemes': {
                     'JWT': {
