@@ -33,7 +33,7 @@ class SwaggerDocument(object):
         return {
             'openapi': '3.0.3',
             'info': info,
-            'servers': [{'url': f"{'https' if not is_local else 'http'}://" + host + "/"}],
+            'servers': [{'url': f"{'https' if not is_local else 'http'}://{host}"}],
             'components': {
                 'securitySchemes': {
                     'JWT': {
