@@ -97,6 +97,11 @@ class SwaggerEndpoint(object):
         self.default_response_schema = None
         self.response_headers = None
 
+    def set_default_response_ref(self, schema_name):
+        self.default_response_schema = {
+            '$ref': '#/components/schemas/' + schema_name
+        }
+
     def set_default_response_structure(self, properties, is_array=False):
         schema = {'type': 'object', 'properties': {}, 'required': []}
         for prop in properties:

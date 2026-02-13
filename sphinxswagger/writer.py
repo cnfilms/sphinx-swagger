@@ -406,6 +406,11 @@ class EndpointVisitor(nodes.SparseNodeVisitor):
                 value_node.walkabout(visitor)
                 self.endpoint.set_default_response_structure(
                     visitor.parameters, is_array=True)
+            elif name == 'Resschema':
+                visitor = ParagraphVisitor(self.document)
+                value_node.walkabout(visitor)
+                schema_name = visitor.get_paragraph().strip()
+                self.endpoint.set_default_response_ref(schema_name)
             elif name == "Return" or name == 'Returns':
                 visitor = ParagraphVisitor(self.document)
                 value_node.walkabout(visitor)
