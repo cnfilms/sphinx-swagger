@@ -105,8 +105,11 @@ class SwaggerEndpoint(object):
     def set_default_response_structure(self, properties, is_array=False):
         schema = {'type': 'object', 'properties': {}, 'required': []}
         for prop in properties:
-            name = prop.pop('name')
-            schema['properties'][name] = prop.copy()
+            name = prop['name']
+            flat_prop = prop.get('schema', {}).copy()
+            if 'description' in prop:
+                flat_prop['description'] = prop['description']
+            schema['properties'][name] = flat_prop
             schema['required'].append(name)
         if is_array:
             schema = {'type': 'array', 'items': schema}
